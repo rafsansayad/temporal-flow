@@ -17,7 +17,7 @@ The project is fully containerized with **Docker** and exposes a REST API for sc
 
 <br>
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/31040b08-2907-43c3-8499-6039d5f7f787" width="100%" controls autoplay muted loop></video>
+  <video src= https://github.com/user-attachments/assets/30a76ce6-562e-4386-a232-ea24928dae5a width="100%" controls autoplay muted loop></video>
 </div>
 <p align="center"><em>Figure 1: Zero-shot tracking of a dog (OWL-ViT + CSRT) with segmentation and depth estimation.</em></p>
 <br>
