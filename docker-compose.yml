@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  temporal-flow:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./outputs:/app/outputs
+      - ./weights:/app/weights:ro
+    environment:
+      - DEVICE=cuda
+      - PYTHONUNBUFFERED=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    shm_size: '2gb'
+

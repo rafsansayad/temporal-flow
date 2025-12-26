@@ -18,8 +18,8 @@ from app.pipeline import VideoPipeline
 from app.processing.point_cloud import depth_to_point_cloud, save_ply, save_rotating_gif
 
 # Config
-VIDEO_PATH = "samples/Test vid-2 .mp4"
-TEXT_PROMPT = "a person's face"
+VIDEO_PATH = "samples/Test 480p 30Fps.mp4"
+TEXT_PROMPT = "a dog"
 OUTPUT_DIR = "outputs/3d_test"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -38,7 +38,7 @@ if not ret:
 
 # 3. Process Frame
 # Auto-detect to init tracker
-success = pipeline.auto_detect_and_init(frame, TEXT_PROMPT)
+success = pipeline.auto_detect_and_init(frame, TEXT_PROMPT, redetect_interval=15)
 if not success:
     print("Detection failed")
     sys.exit(1)

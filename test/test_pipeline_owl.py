@@ -39,18 +39,18 @@ def create_visualization(frame: np.ndarray, mask: np.ndarray, depth: np.ndarray,
     cv2.rectangle(frame_viz, (x, y), (x + w_box, y + h_box), (0, 255, 0), 3)
     cv2.putText(frame_viz, f"Frame {frame_num}", (10, 35), 
                 cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
-    cv2.putText(frame_viz, "ORIGINAL + BOX", (10, h - 15), 
+    cv2.putText(frame_viz, "ORIGINAL + TRACKED BOX", (10, h - 15), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     
     # Mask overlay
     mask_colored = cv2.applyColorMap(mask, cv2.COLORMAP_JET)
     mask_overlay = cv2.addWeighted(frame, 0.6, mask_colored, 0.4, 0)
-    cv2.putText(mask_overlay, "MASK", (10, h - 15), 
+    cv2.putText(mask_overlay, "MASK OVERLAY", (10, h - 15), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     
     # Depth map
     depth_colored = cv2.applyColorMap(depth, cv2.COLORMAP_MAGMA)
-    cv2.putText(depth_colored, "DEPTH", (10, h - 15), 
+    cv2.putText(depth_colored, "DEPTH MAP", (10, h - 15), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
     
     # Combine horizontally (side-by-side)
