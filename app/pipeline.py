@@ -1,0 +1,139 @@
+"""
+Core Video Processing Pipeline.
+
+Orchestrates:
+1. Object Tracking (CSRT)
+2. Segmentation (MobileSAM)
+3. Temporal Refinement (RAFT/Farneback)
+4. Depth Estimation (MiDAS)
+"""
+
+import cv2
+import numpy as np
+import os
+import torch
+from typing import Tuple, Optional, Generator
+
+from app.models.sam import MobileSAM
+from app.models.depth import MiDAS
+from app.processing.flow import TemporalRefiner
+from config import WEIGHTS_DIR, SAM_CHECKPOINT, MIDAS_MODEL, DEVICE
+
+class VideoPipeline:
+    def __init__(self):
+        """Initialize the pipeline and load models."""
+        print("[INFO] Initializing VideoPipeline...")
+        
+        # Load Models
+        self.sam = MobileSAM(os.path.join(WEIGHTS_DIR, SAM_CHECKPOINT), DEVICE)
+        self.midas = MiDAS(MIDAS_MODEL, DEVICE)
+        
+        # Tools
+        self.refiner = TemporalRefiner(alpha=0.15, track_point=False)
+        self.tracker = None
+        
+        # State
+        self.tracker_initialized = False
+        self.current_box = None
+        
+    def init_tracker(self, frame: np.ndarray, box: Tuple[int, int, int, int]):
+        """Initialize the object tracker with a bounding box."""
+        try:
+            self.tracker = cv2.legacy.TrackerCSRT_create()
+        except AttributeError:
+            self.tracker = cv2.TrackerCSRT_create()
+            
+        self.tracker.init(frame, box)
+        self.current_box = box
+        self.tracker_initialized = True
+        self.refiner.reset()
+        print(f"[INFO] Tracker initialized at {box}")
+
+    def filter_by_depth(self, mask: np.ndarray, depth_map: np.ndarray, threshold: float = 0.5) -> np.ndarray:
+        """
+        Experimental: Remove mask pixels that are significantly farther/closer than the object.
+        
+        Args:
+            mask: Binary segmentation mask
+            depth_map: Normalized depth map (0-255)
+            threshold: Std dev tolerance multiplier
+        """
+        if np.sum(mask) == 0:
+            return mask
+
+        # Get depth of the object (where mask is True)
+        object_depths = depth_map[mask > 128]
+        
+        if len(object_depths) == 0:
+            return mask
+
+        mean_depth = np.mean(object_depths)
+        std_depth = np.std(object_depths)
+        
+        # Define range (e.g., keep pixels within 1.5 standard deviations)
+        # This removes outliers (accidental background spills)
+        lower_bound = mean_depth - (threshold * std_depth)
+        
+        # Create depth mask (keep pixels that are "close enough")
+        # Note: In MiDAS, higher value = closer. So we want depth > lower_bound.
+        depth_mask = depth_map > lower_bound
+        
+        return cv2.bitwise_and(mask, mask, mask=depth_mask.astype(np.uint8))
+
+    def process_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Process a single frame.
+        
+        Returns:
+            mask: Refined binary mask
+            depth: Depth map
+            box: Current bounding box
+        """
+        if not self.tracker_initialized:
+            return np.zeros(frame.shape[:2], dtype=np.uint8), \
+                   np.zeros(frame.shape[:2], dtype=np.uint8), \
+                   (0,0,0,0)
+
+        # 1. Update Tracker
+        success, box = self.tracker.update(frame)
+        if success:
+            self.current_box = tuple(map(int, box))
+        
+        # 2. SAM Segmentation (Box + Center Point)
+        raw_mask = self.sam.segment_box(frame, self.current_box)
+        
+        # 3. Temporal Refinement (Optical Flow)
+        refined_mask, _ = self.refiner.refine(frame, raw_mask)
+        
+        # 4. Depth Estimation
+        depth_map = self.midas.estimate(frame)
+        
+        # 5. Depth Filtering (Optional Cleanup)
+        # We filter the refined mask using depth to remove background spill
+        final_mask = self.filter_by_depth(refined_mask, depth_map, threshold=1.5)
+        
+        return final_mask, depth_map, self.current_box
+
+    def process_video_generator(self, video_path: str) -> Generator:
+        """
+        Generator that yields processed frames (for streaming/saving).
+        """
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError(f"Cannot open video: {video_path}")
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            # Resize for speed (optional)
+            h, w = frame.shape[:2]
+            if w > 640:
+                scale = 640 / w
+                frame = cv2.resize(frame, None, fx=scale, fy=scale)
+                
+            yield frame, self.process_frame(frame)
+            
+        cap.release()
+
