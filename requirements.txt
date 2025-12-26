@@ -4,6 +4,7 @@ transformers
 scipy
 accelerate
 Pillow
+matplotlib
 
 
 
