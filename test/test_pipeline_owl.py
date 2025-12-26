@@ -22,11 +22,11 @@ from app.pipeline import VideoPipeline
 from config import DEVICE
 
 # Configuration
-VIDEO_PATH = "samples/Test vid-2 .mp4"
-OUTPUT_DIR = "outputs/pipeline_owl_test"
-TEXT_QUERY = "a person's face"
+VIDEO_PATH = "samples/Test 480p 30Fps.mp4"
+OUTPUT_DIR = "outputs/pipeline_owl_test/dog"
+TEXT_QUERY = "a dog"
 DETECTION_THRESHOLD = 0.1
-MAX_FRAMES = 60  # Process first 60 frames
+MAX_FRAMES = 350 # Process first 60 frames
 
 def create_visualization(frame: np.ndarray, mask: np.ndarray, depth: np.ndarray, 
                          box: tuple, frame_num: int) -> np.ndarray:
@@ -101,7 +101,11 @@ def main():
     
     # Auto-detect object
     print(f"\n[3/5] Auto-detecting: '{TEXT_QUERY}'")
-    success = pipeline.auto_detect_and_init(first_frame, TEXT_QUERY, DETECTION_THRESHOLD)
+    success = pipeline.auto_detect_and_init( first_frame, 
+                                             TEXT_QUERY, 
+                                             DETECTION_THRESHOLD, 
+                                             redetect_interval=15
+                                             )
     
     if not success:
         print("[ERROR] Detection failed. Exiting.")

@@ -38,6 +38,12 @@ class VideoPipeline:
         self.tracker_initialized = False
         self.current_box = None
         
+        # Re-detection settings
+        self.redetect_interval = 0  # 0 to disable
+        self.redetect_query = ""
+        self.redetect_threshold = 0.1
+        self.frame_count = 0
+        
     def init_tracker(self, frame: np.ndarray, box: Tuple[int, int, int, int]):
         """Initialize the object tracker with a bounding box."""
         try:
@@ -51,15 +57,17 @@ class VideoPipeline:
         self.refiner.reset()
         print(f"[INFO] Tracker initialized at {box}")
 
-    def auto_detect_and_init(self, frame: np.ndarray, text_query: str, threshold: float = 0.1) -> bool:
+    def auto_detect_and_init(self, frame: np.ndarray, text_query: str, threshold: float = 0.1, 
+                            keep_owl_loaded: bool = False, redetect_interval: int = 0) -> bool:
         """
         Auto-detect object using OWL-ViT and initialize tracker.
-        Automatically unloads OWL-ViT after detection to free VRAM.
         
         Args:
             frame: First frame
             text_query: What to detect (e.g., "a person's face")
             threshold: Detection confidence threshold
+            keep_owl_loaded: If True, OWL-ViT stays in memory for re-detection
+            redetect_interval: Run re-detection every N frames (0 to disable)
             
         Returns:
             True if detection successful, False otherwise
@@ -68,12 +76,20 @@ class VideoPipeline:
             print("[ERROR] OWL-ViT not initialized. Set use_owl_vit=True")
             return False
         
+        # Save settings for re-detection
+        self.redetect_query = text_query
+        self.redetect_threshold = threshold
+        self.redetect_interval = redetect_interval
+        
         box = self.owl.get_best_detection(frame, text_query, threshold)
         
-        # Unload OWL-ViT immediately to free VRAM
-        print("[INFO] Unloading OWL-ViT to free VRAM...")
-        self.owl.unload()
-        self.owl = None
+        if not keep_owl_loaded and redetect_interval == 0:
+            # Unload OWL-ViT immediately to free VRAM
+            print("[INFO] Unloading OWL-ViT to free VRAM...")
+            self.owl.unload()
+            self.owl = None
+        else:
+            print("[INFO] Keeping OWL-ViT loaded for re-detection.")
         
         if box == (0, 0, 0, 0):
             print(f"[WARNING] No detection found for '{text_query}'")
@@ -127,6 +143,23 @@ class VideoPipeline:
             return np.zeros(frame.shape[:2], dtype=np.uint8), \
                    np.zeros(frame.shape[:2], dtype=np.uint8), \
                    (0,0,0,0)
+
+        self.frame_count += 1
+
+        # 0. Periodic Re-Detection (Anti-Drift)
+        if (self.redetect_interval > 0 and 
+            self.frame_count % self.redetect_interval == 0 and 
+            self.owl is not None):
+            
+            # Try to find object again
+            new_box = self.owl.get_best_detection(frame, self.redetect_query, self.redetect_threshold)
+            
+            # Only update if we found something with high confidence
+            # (get_best_detection already filters by threshold)
+            if new_box != (0, 0, 0, 0):
+                print(f"[INFO] Re-detected object at frame {self.frame_count}: {new_box}")
+                self.init_tracker(frame, new_box)
+                # Note: init_tracker resets tracker, so next step will work from new box
 
         # 1. Update Tracker
         success, box = self.tracker.update(frame)
