@@ -1,5 +1,9 @@
 opencv-contrib-python
 timm
+transformers
+scipy
+accelerate
+Pillow
 
 
 

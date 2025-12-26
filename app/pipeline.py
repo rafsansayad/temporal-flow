@@ -16,17 +16,19 @@ from typing import Tuple, Optional, Generator
 
 from app.models.sam import MobileSAM
 from app.models.depth import MiDAS
+from app.models.owl_vit import OwlViT
 from app.processing.flow import TemporalRefiner
 from config import WEIGHTS_DIR, SAM_CHECKPOINT, MIDAS_MODEL, DEVICE
 
 class VideoPipeline:
-    def __init__(self):
+    def __init__(self, use_owl_vit: bool = False):
         """Initialize the pipeline and load models."""
         print("[INFO] Initializing VideoPipeline...")
         
         # Load Models
         self.sam = MobileSAM(os.path.join(WEIGHTS_DIR, SAM_CHECKPOINT), DEVICE)
         self.midas = MiDAS(MIDAS_MODEL, DEVICE)
+        self.owl = OwlViT(DEVICE) if use_owl_vit else None
         
         # Tools
         self.refiner = TemporalRefiner(alpha=0.15, track_point=False)
@@ -48,6 +50,38 @@ class VideoPipeline:
         self.tracker_initialized = True
         self.refiner.reset()
         print(f"[INFO] Tracker initialized at {box}")
+
+    def auto_detect_and_init(self, frame: np.ndarray, text_query: str, threshold: float = 0.1) -> bool:
+        """
+        Auto-detect object using OWL-ViT and initialize tracker.
+        Automatically unloads OWL-ViT after detection to free VRAM.
+        
+        Args:
+            frame: First frame
+            text_query: What to detect (e.g., "a person's face")
+            threshold: Detection confidence threshold
+            
+        Returns:
+            True if detection successful, False otherwise
+        """
+        if self.owl is None:
+            print("[ERROR] OWL-ViT not initialized. Set use_owl_vit=True")
+            return False
+        
+        box = self.owl.get_best_detection(frame, text_query, threshold)
+        
+        # Unload OWL-ViT immediately to free VRAM
+        print("[INFO] Unloading OWL-ViT to free VRAM...")
+        self.owl.unload()
+        self.owl = None
+        
+        if box == (0, 0, 0, 0):
+            print(f"[WARNING] No detection found for '{text_query}'")
+            return False
+        
+        print(f"[INFO] Auto-detected: {box}")
+        self.init_tracker(frame, box)
+        return True
 
     def filter_by_depth(self, mask: np.ndarray, depth_map: np.ndarray, threshold: float = 0.5) -> np.ndarray:
         """
