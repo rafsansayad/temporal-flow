@@ -1,4 +1,4 @@
-opencv-python==4.12.0
+opencv-contrib-python
 timm
 
 

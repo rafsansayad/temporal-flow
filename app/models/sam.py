@@ -83,4 +83,50 @@ class MobileSAM:
         )
         
         return masks[0].astype(np.uint8) * 255
+    
+    def segment_box(self, frame: np.ndarray, box: tuple) -> np.ndarray:
+        """
+        Segment object in frame using bounding box + center point prompt.
+        
+        Combines box and center point for more precise segmentation,
+        reducing ambiguity (e.g., face vs hair).
+        
+        Args:
+            frame: Input image (H, W, 3) in BGR format
+            box: (x, y, w, h) bounding box in XYWH format
+            
+        Returns:
+            Binary mask (H, W) with values 0 or 255
+            
+        Raises:
+            ValueError: If frame or box is invalid
+        """
+        self._ensure_loaded()
+        
+        if frame is None or frame.size == 0:
+            raise ValueError("Invalid frame: empty or None")
+        
+        if len(frame.shape) != 3 or frame.shape[2] != 3:
+            raise ValueError(f"Expected (H,W,3) frame, got {frame.shape}")
+        
+        x, y, w, h = box
+        
+        # Convert XYWH to XYXY format for SAM
+        box_xyxy = np.array([x, y, x + w, y + h])
+        
+        # Calculate center point of box
+        center_x = x + w // 2
+        center_y = y + h // 2
+        
+        self.predictor.set_image(frame)
+        
+        # Use both box AND center point for precise segmentation
+        masks, _, _ = self.predictor.predict(
+            point_coords=np.array([[center_x, center_y]]),
+            point_labels=np.array([1]),
+            box=box_xyxy,
+            multimask_output=False
+        )
+        
+        return masks[0].astype(np.uint8) * 255
 
